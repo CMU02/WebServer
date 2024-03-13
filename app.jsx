@@ -8,7 +8,7 @@ app.use('/static', express.static('public'))
 
 // 루트 경로 ('/')에 대한 GET 요청을 처리합니다.
 app.get('/', (req, res) => {
-    res.send('Hello Express.js!');
+    res.send('Hello, World!!!');
 })
 // 서버를 설정한 포트에서 실행합니다.
 app.listen(PORT, () => {
