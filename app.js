@@ -171,7 +171,7 @@ app.post('/token/login', (req, res) => {
       JWT_SECRET_KEY, 
       {expiresIn:'1h'}
     );
-    res.json({token, user:user.name});
+    res.json({token, username:user.name});
   } else {
     res.status(401).send('로그인 실패')
   }
