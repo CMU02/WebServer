@@ -5,6 +5,8 @@ const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
+const { User, sequelize } = require('./src/db_manager');
+const { users_data } = require('./src/db_manager/make_dummy');
 
 const JWT_SECRET_KEY = "helloworld";
 const PORT = process.env.PORT || 3000;
@@ -60,13 +62,6 @@ const tokenAuthMiddleware = (req, res, next) => {
   next();
 }
 
-
-const users = [
-  {id: "hong", name: "홍길동", pwd: '1234'},
-  {id: "kim", name: "김길동", pwd: '1234'},
-  {id: "so", name: "소길동", pwd: '1234'},
-  {id: "na", name: "나길동", pwd: '1234'},
-]
 // 루트 경로 ('/')에 대한 GET 요청을 처리합니다.
 app.get('/', tokenAuthMiddleware,(req, res) => {
     res.send(`Hello, ${req.user.name}`);
@@ -98,67 +93,54 @@ app.get('/session/logout', (req, res) => {
 
 
 app.route('/user')
-  .get(tokenAuthMiddleware,(req, res) => {
+  .get(async(req, res) => {
     const { id } = req.query;
-    if(id) {
-      const resultUser = users.find((userData) => userData.id === id);
-      if(resultUser) {
-        res.send(resultUser);
-      } else {
-        res.status(400).send("해당 사용자를 찾을 수 없습니다.")
-      }
+
+    if(!id) {
+      await User.findAll().then((users) => {
+        res.json(users);
+      });
     } else {
-      // id queryParam가 없는 경우, 모든 사용자 정보 반환
-      return res.send(users);
+      await User.findOne({where: {id}}).then((user) => {
+        if(user) {
+          res.json(user);
+        } else {
+          res.status(404).send('사용자를 찾을 수 없습니다.');
+        }
+      });
     }
   })
-  .post((req, res) => {
-    const {id, name, pwd} = req.body;
-    const findUser = users.find((user) => user.id === id); // 이미 존재하는 users 찾기
-    const password = req.body.pwd; // password
+  .post(async(req, res) => {
+    const {id, username, password, age} = req.body;
+    const findUser = await User.findOne({where: {id}});
 
-    if (!findUser) { // 신규 유저일 경우
-      if (password.length >= 8) {
-        users.push({id : id, name : name, pwd : pwd}); // users 데이터 저장
-        res.status(200).send(users)
-      } else {
-        res.status(400).send("비밀번호는 8자리 이상으로 설정 해주세요.");
-      }
+    if(findUser.id === id) {
+      res.status(400).send('이미 존재하는 사용자입니다.');
     } else {
-      res.status(400).send("이미 존재하는 사용자입니다.");
+      await User.create({id, username, password, age});
+      res.send('사용자가 생성되었습니다.');
     }
   })
-  .put((req, res) => {
-    const { id, name, pwd } = req.body;
-    const findUser = users.find((user) => user.id === id);
-    const password = req.body.pwd; // password
+  .put(async(req, res) => {
+    const { id, username, password, age } = req.body;
+    const findUser = await User.findOne({where: {id}});
 
-    if (!findUser) {
-      res.status(400).send("해당 유저는 없는 유저 입니다.");
+    if(findUser.id !== id) {
+      res.status(400).send('해당 사용자가 없습니다.');
     } else {
-      if (password.length >= 8) {
-        findUser.name = name; // 이름 변경
-        findUser.pwd = pwd; // 비밀번호 변경
-
-        let updateJsonArray = JSON.stringify(users); // Obejct -> JSON 배열 생성
-
-        res.send(updateJsonArray);
-      } else {
-        res.status(400).send("비밀번호는 8자리 이상으로 설정 해주세요.");
-      }
+      await User.update({username, password, age}, {where: {id}});
+      res.send('사용자 정보가 수정되었습니다.');
     }
   })
-  .delete((req, res) => {
+  .delete(async(req, res) => {
     const {id} = req.body;
-    const findUser = users.find((user) => user.id === id);
-
-    if(!findUser) {
-      res.status(400).send("해당 유저는 없는 유저 입니다.");
+    const findUser = await User.findOne({where: {id}});
+    if(findUser.id !== id) {
+      res.status(400).send('해당 사용자가 없습니다.');
     } else {
-      const index = users.indexOf(findUser); // 찾은 유저 JSON 배열 인덱스
-      users.splice(index, 1); // 찾은 유저 데이터 삭제
-
-      res.send(users);
+      User.destroy({ where: { id } }).then(() => {
+        res.send("사용자 정보가 삭제되었습니다.");
+      });
     }
   })
 
@@ -180,8 +162,19 @@ app.post('/token/login', (req, res) => {
 
 
 // 서버를 설정한 포트에서 실행합니다.
-app.listen(PORT, () => {
-    console.log(`Server is running in port ${PORT}`);
-})
+app.listen(PORT, async() => {
+  try {
+    await sequelize.authenticate();
+    console.log("Connection has been established successfully.");
+    await User.sync({ force: true });
+
+    for (const user of users_data) {
+      await User.create(user);
+    }
+  } catch (error) {
+    console.log("Unable to connect to the database: ", error);
+  }
+  console.log(`Server is running in port ${PORT}`);
+});
 
 
